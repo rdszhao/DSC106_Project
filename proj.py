@@ -23,7 +23,8 @@ states['dt'] = pd.to_datetime(states['date'])
 states = states[states['dt'] > '01/08/2021']
 states['pct'] = states['people_vaccinated_per_hundred']
 states['week'] = states['dt'].dt.isocalendar().week
-states = states.merge(state_map, left_on='location', right_on='statename', how='left')
+states.location = states.location.str.replace('New York State', 'New York')
+states = states.merge(state_map, left_on='location', right_on='statename', how='left').dropna()
 states_raw = states.groupby(['week', 'location']).max().reset_index()
 states = states.pivot_table(index=['sfips', 'statename'], columns='week', values='pct', aggfunc='max')
 min_week, max_week = states.columns.min(), states.columns.max()
@@ -31,12 +32,27 @@ states.columns = states.columns.astype(str)
 columns = states.columns.to_list()
 states = states.reset_index()
 # %%
+demos = pd.read_csv('data/demographics.csv', skiprows=5).rename(columns={'Demographic Group': 'group', 'Percent of group with at least one dose': 'pct'}).set_index('Date')[['group', 'pct']]
+demos['group'] = demos['group'].str.lower()
+demos = demos[~demos.group.str.contains('known')].reset_index()
+demos.columns = demos.columns.str.lower()
+sex = demos[demos.group.str.contains('sex')]
+eth = demos[demos.group.str.contains('eth')]
+sex.group = sex.group.str.split('_').str[-1]
+eth.group = eth.group.str.split('_').str[-1].str.replace('aian', 'asian')
+sex['dt'] = pd.to_datetime(sex.date)
+sex = sex[sex['dt'] > '01/08/2021']
+sex['week'] = sex['dt'].dt.isocalendar().week
+eth['dt'] = pd.to_datetime(eth.date)
+eth = eth[eth['dt'] > '01/08/2021']
+eth['week'] = eth['dt'].dt.isocalendar().week
+# %%
 select_week = alt.selection_single(
     name='week', fields=['week'], init={'week': 2},
     bind=alt.binding_range(min=min_week, max=max_week, step=1)
 )
 
-c1 = alt.Chart(us_states).mark_geoshape(
+c1a = alt.Chart(us_states).mark_geoshape(
     stroke='black',
     strokeWidth=0.05
 ).project(
@@ -68,7 +84,7 @@ c1 = alt.Chart(us_states).mark_geoshape(
 )
 # %%
 click = alt.selection_multi(fields=['statename'])
-c2 = alt.Chart(us_counties).mark_geoshape(
+c1b = alt.Chart(us_counties).mark_geoshape(
     stroke='black',
     strokeWidth=0.1,
 ).project(
@@ -91,7 +107,8 @@ c2 = alt.Chart(us_counties).mark_geoshape(
     height=400
 )
 # %%
-c3 = alt.Chart(states_raw).mark_line().encode(
+# %%
+c2 = alt.Chart(states_raw).mark_line().encode(
     x='week:N',
     y='pct:Q',
     color=alt.Color('statename', scale=alt.Scale(domain=click)),
@@ -99,9 +116,37 @@ c3 = alt.Chart(states_raw).mark_line().encode(
 ).add_selection(
     click
 ).interactive().properties(
-    width=700,
+    width=1000,
     height=400
 )
 # %%
-(c1 + c2) & c3
+c3a = alt.Chart(sex).mark_bar().encode(
+    x='group:N',
+    y=alt.Y('pct:Q', scale=alt.Scale(domain=(0, 100))),
+    color=alt.Color('group:N')
+).add_selection(
+    select_week
+).transform_filter(
+    select_week
+)
+# %%
+c3b = alt.Chart(eth).mark_bar().encode(
+    x='group:N',
+    y=alt.Y('pct:Q', scale=alt.Scale(domain=(0, 100))),
+    color=alt.Color('group:N'),
+).add_selection(
+    select_week
+).transform_filter(
+    select_week
+)
+# %%
+c3 = alt.hconcat(
+    c3a, c3b
+).resolve_scale(
+    color='independent'
+)
+# %%
+C = ((c1a + c1b) | c3) & c2
+# %%
+C
 # %%
