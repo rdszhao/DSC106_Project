@@ -24,7 +24,7 @@ c1a = alt.Chart(us.states).mark_geoshape(
     type='albersUsa'
 ).transform_lookup(
     lookup='id',
-    from_=alt.LookupData(states.long, 'sfips', ['statename'] + states.columns)
+    from_=alt.LookupData(states.wide, 'sfips', ['statename'] + states.columns)
 ).transform_fold(
     states.columns, as_=['week', 'pct']
 ).transform_calculate(
@@ -160,4 +160,3 @@ C2 = c4a + c4b
 
 C1
 C2
-# %%
